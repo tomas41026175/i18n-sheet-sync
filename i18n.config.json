@@ -1,0 +1,7 @@
+{
+  "sheetId": "1Pi_siQaZzjEzULQJdI_P--egUB8w2gWJ1qBIcEiwP1E",
+  "auth": "./googleApi.json",
+  "langs": ["zh-TW", "en-US", "zh-CN", "zh-HK", "vi-VN"],
+  "sheetName": "Translations",
+  "baseLang": "zh-TW"
+}
