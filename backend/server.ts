@@ -1,36 +1,35 @@
 import express from "express";
 import path from "path";
-import { downloadSheetToJson, syncJsonToSheet } from "./src/sync";
-import config from "./i18n.config.json";
+import { downloadSheetToJson, syncJsonToSheet } from "./sync.ts";
+import config from "../shared/i18n-config.ts";
 import fs from "fs/promises";
 import type { Request, Response } from "express";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
 const app = express();
-const port = 3000;
+const port = 3005;
 
-app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-app.post("/download", async (req, res) => {
+app.post("/download", async (req: Request, res: Response) => {
   try {
     const { sheetName } = req.body;
     await downloadSheetToJson(
       { ...config, sheetName: sheetName || config.sheetName },
-      "./entire.json"
+      path.join(__dirname, "../entire.json")
     );
     res.json({ success: true, message: "下載並產生語系檔案完成" });
-  } catch (e) {
+  } catch (e: any) {
     res.json({ success: false, message: e.message });
   }
 });
 
-app.get("/data", async (req, res) => {
+app.get("/data", async (res: Response) => {
   try {
-    const raw = await fs.readFile("./entire.json", "utf-8");
+    const raw = await fs.readFile(path.join(__dirname, "../entire.json"), "utf-8");
     res.json({ success: true, data: JSON.parse(raw) });
-  } catch (e) {
+  } catch (e: any) {
     res.json({ success: false, message: e.message });
   }
 });
@@ -43,7 +42,7 @@ app.post("/add", async (req: Request, res: Response) => {
       return;
     }
     // 讀取 entire.json 檢查是否重複
-    const raw = await fs.readFile("./entire.json", "utf-8");
+    const raw = await fs.readFile(path.join(__dirname, "../entire.json"), "utf-8");
     const arr = JSON.parse(raw);
     if (arr.some((row: any) => row.cate === cate && row.key === key)) {
       res.json({ success: false, message: "分類+key 已存在" });
@@ -61,11 +60,11 @@ app.post("/add", async (req: Request, res: Response) => {
       "zh-HK": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "zh-TW")`,
       "vi-VN": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "vi")`,
     });
-    await fs.writeFile("./entire.json", JSON.stringify(arr, null, 2), "utf-8");
+    await fs.writeFile(path.join(__dirname, "../entire.json"), JSON.stringify(arr, null, 2), "utf-8");
     // 同步到 Google Sheet
-    await syncJsonToSheet("./entire.json", config);
+    await syncJsonToSheet(path.join(__dirname, "../entire.json"), config);
     // 下載最新資料
-    await downloadSheetToJson(config, "./entire.json");
+    await downloadSheetToJson(config, path.join(__dirname, "../entire.json"));
     res.json({
       success: true,
       message: "已同步寫入 Google Sheet 並下載最新資料",
@@ -192,25 +191,36 @@ app.post("/delete", async (req: Request, res: Response) => {
     console.log(`✅ 已從 Google Sheet 刪除分類: ${cate}, key: ${key}`);
 
     // 5. 下載最新的 Google Sheet 資料來更新本地檔案
-    await downloadSheetToJson(config, "./entire.json");
+    await downloadSheetToJson(config, path.join(__dirname, "../entire.json"));
 
-    res.json({ success: true, message: "資料已從 Google Sheet 刪除並更新本地畫面" });
-
+    res.json({
+      success: true,
+      message: "資料已從 Google Sheet 刪除並更新本地畫面",
+    });
   } catch (e: any) {
     console.error("刪除 Google Sheet 資料失敗:", e);
     // 捕獲具體的 API 錯誤訊息並回傳，包括 API 錯誤的詳細信息
     if (e.response && e.response.data && e.response.data.error) {
-       const apiError = e.response.data.error;
-       console.error("Google API 錯誤詳細信息:", apiError);
-       res.json({ success: false, message: `刪除 Google Sheet 資料失敗: ${apiError.message || e.message}` });
+      const apiError = e.response.data.error;
+      console.error("Google API 錯誤詳細信息:", apiError);
+      res.json({
+        success: false,
+        message: `刪除 Google Sheet 資料失敗: ${apiError.message || e.message}`,
+      });
     } else if (e.code === 400 && e.errors && e.errors[0].message) {
-       res.json({ success: false, message: "刪除 Google Sheet 資料失敗: " + e.errors[0].message });
+      res.json({
+        success: false,
+        message: "刪除 Google Sheet 資料失敗: " + e.errors[0].message,
+      });
     } else {
-       res.json({ success: false, message: "刪除 Google Sheet 資料失敗: " + e.message });
+      res.json({
+        success: false,
+        message: "刪除 Google Sheet 資料失敗: " + e.message,
+      });
     }
   }
 });
 
 app.listen(port, () => {
-  console.log(`Web 介面已啟動：http://localhost:${port}`);
+  console.log(`已啟動：http://localhost:${port}`);
 });

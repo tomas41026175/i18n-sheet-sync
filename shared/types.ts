@@ -3,7 +3,7 @@ export interface SheetConfig {
   auth: string; // path to service account JSON
   langs: string[];
   sheetName?: string;
-  baseLang: string;
+  baseLang?: string;
 }
 
 export type TranslationJson = Record<string, string>;

@@ -1,10 +1,10 @@
 import { google } from "googleapis";
 import fs from "fs/promises";
 import { JWT } from "google-auth-library";
-import { SheetConfig } from "./types";
+import type { SheetConfig } from "../shared/types.ts";
 
 export async function syncJsonToSheet(jsonPath: string, config: SheetConfig) {
-  const { sheetId, auth, langs, sheetName = "Translations", baseLang } = config;
+  const { sheetId, auth, langs, sheetName = "Translations" } = config;
 
   const raw = await fs.readFile(jsonPath, "utf-8");
   const jsonArr: Array<Record<string, string>> = JSON.parse(raw);

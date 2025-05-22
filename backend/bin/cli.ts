@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import path from "path";
-import { syncJsonToSheet, downloadSheetToJson } from "../src/sync";
 import fs from "fs/promises";
+import { downloadSheetToJson, syncJsonToSheet } from "../sync";
 
 const program = new Command();
 
