@@ -2,13 +2,13 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { downloadSheetToJson, syncJsonToSheet } from "./sync.ts";
-import config from "../shared/i18n-config.ts";
+import config from "../shared/i18n-config";
 import fs from "fs/promises";
 import type { Request, Response } from "express";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 import cors from "cors";
+import { downloadSheetToJson, syncJsonToSheet } from "./sync";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,48 +53,78 @@ app.get("/data", async (_: Request, res: Response) => {
 
 app.post("/add", async (req: Request, res: Response) => {
   try {
-    const { cate, key, zhTW } = req.body;
-    if (!cate || !key || !zhTW) {
-      res.json({ success: false, message: "缺少必要欄位" });
+    // 從 config 中獲取支援的語系列表
+    const supportedLangs = config.langs;
+
+    // 檢查 cate 和 key 是否存在
+    const { cate, key } = req.body;
+    if (!cate || !key) {
+      res.json({ success: false, message: "缺少必要欄位 (cate 或 key)" });
       return;
     }
-    // 讀取 entire.json 檢查是否重複
-    const raw = await fs.readFile(
-      path.join(__dirname, "./entire.json"),
-      "utf-8"
-    );
-    const arr = JSON.parse(raw);
-    if (arr.some((row: any) => row.cate === cate && row.key === key)) {
-      res.json({ success: false, message: "分類+key 已存在" });
-      return;
-    }
-    // 計算 rowIndex（1-based，含標題）
-    const rowIndex = arr.length + 2;
-    // 新增到暫存檔，其他語系自動填 GOOGLETRANSLATE 公式
-    arr.push({
-      cate,
-      key,
-      "zh-TW": zhTW,
-      "en-US": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "en")`,
-      "zh-CN": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "zh-CN")`,
-      "zh-HK": `=C${rowIndex}`,
-      "vi-VN": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "vi")`,
+
+    // 構建新資料物件，動態從 req.body 中獲取語系對應的值
+    const newRowData: Record<string, string> = {
+      cate: cate,
+      key: key,
+    };
+
+    let baseLangValue = ""; // 用於檢查 baseLang 是否有值
+
+    supportedLangs.forEach((lang) => {
+      // 將語系代碼中的 '-' 移除，生成對應的鍵名
+      const langKey = lang.replace("-", "");
+      const value = req.body[langKey] || ""; // 從 body 中獲取對應語系的值
+
+      // 如果是 baseLang，檢查是否有值
+      if (lang === config.baseLang) {
+        baseLangValue = value;
+      }
+
+      newRowData[lang] = value; // 將資料存儲到 newRowData 中，鍵名使用帶 '-' 的完整語系代碼
     });
-    await fs.writeFile(
-      path.join(__dirname, "./entire.json"),
-      JSON.stringify(arr, null, 2),
-      "utf-8"
-    );
+
+    // 檢查 baseLang 是否有值
+    if (!baseLangValue) {
+      res.json({
+        success: false,
+        message: `基礎語系 (${config.baseLang}) 的值不能為空`,
+      });
+      return;
+    }
+
+    // 讀取 entire.json 檢查是否重複 (使用 cate 和 key 組合檢查)
+    const entireJsonPath = path.join(__dirname, "./entire.json");
+    const raw = await fs.readFile(entireJsonPath, "utf-8");
+    const arr: Array<Record<string, string>> = JSON.parse(raw);
+
+    if (arr.some((row) => row.cate === cate && row.key === key)) {
+      res.json({
+        success: false,
+        message: `分類 "${cate}" + key "${key}" 已存在`,
+      });
+      return;
+    }
+
+    // 將新資料添加到現有資料陣列中
+    arr.push(newRowData);
+
+    // 將更新後的資料寫回 entire.json 檔案
+    await fs.writeFile(entireJsonPath, JSON.stringify(arr, null, 2), "utf-8");
+
     // 同步到 Google Sheet
-    await syncJsonToSheet(path.join(__dirname, "./entire.json"), config);
-    // 下載最新資料
-    await downloadSheetToJson(config, path.join(__dirname, "./entire.json"));
+    await syncJsonToSheet(entireJsonPath, config);
+
+    // 下載最新資料 (確保本地 entire.json 與 Sheet 同步)
+    await downloadSheetToJson(config, entireJsonPath);
+
     res.json({
       success: true,
-      message: "已同步寫入 Google Sheet 並下載最新資料",
+      message: "已新增資料，同步寫入 Google Sheet 並下載最新資料完成",
     });
   } catch (e: any) {
-    res.json({ success: false, message: e.message });
+    console.error("新增資料時發生錯誤:", e);
+    res.json({ success: false, message: `新增資料時發生錯誤: ${e.message}` });
   }
 });
 

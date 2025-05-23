@@ -39,13 +39,15 @@
   },
   "scripts": {
     "dev": "concurrently \"vite\" \"ts-node backend/server.ts\"",
-    "build": "tsc && vite build",
+    "backend:build": "tsc -p tsconfig.json",
+    "frontend:build": "vite build frontend",
+    "build": "pnpm run backend:build && pnpm run frontend:build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "type-check": "tsc --noEmit",
     "start": "vite",
     "clean": "rimraf dist",
-    "build:prod": "npm run clean && npm run build"
+    "build:prod": "pnpm run clean && pnpm run build"
   }
 }

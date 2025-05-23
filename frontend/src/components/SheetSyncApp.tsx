@@ -9,8 +9,13 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-
 import EnhancePagination from "./EnhancePagination";
+import { Input } from "./ui/input";
+
+const config = {
+  baseLang: "zh-TW",
+  langs: ["zh-TW", "en-US", "zh-CN", "zh-HK", "vi-VN"],
+};
 
 function SheetSyncApp() {
   const { tableData, categories, loadData } = useSheetData(); // 使用 useSheetData Hook
@@ -24,11 +29,20 @@ function SheetSyncApp() {
     message: string;
   } | null>(null);
 
-  const [addFormData, setAddFormData] = useState({
+  // 根據 config.langs 動態生成 addFormData 的初始狀態
+  const initialAddFormData: Record<string, string> = {
     cate: "",
     key: "",
-    zhTW: "",
+  };
+
+  config.langs.forEach((lang) => {
+    const langKey = lang.replace("-", "");
+    initialAddFormData[langKey] = ""; // 使用去掉 '-' 的鍵名初始化為空字串
   });
+
+  const [addFormData, setAddFormData] =
+    useState<Record<string, string>>(initialAddFormData);
+
   const [addResult, setAddResult] = useState<{
     success: boolean;
     message: string;
@@ -80,7 +94,7 @@ function SheetSyncApp() {
     }
   };
 
-  const handleReset = async (e: any) => {
+  const handleReset = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     // setDownloadResult(null); // 清空之前的結果 - 暫時註解掉，後面根據後端回覆設定狀態
 
@@ -116,12 +130,23 @@ function SheetSyncApp() {
     setAddResult(null); // 清空之前的結果
 
     try {
+      // 準備要發送的資料，鍵名使用去掉 '-' 的格式
+      const dataToSend: Record<string, string> = {
+        cate: addFormData.cate,
+        key: addFormData.key,
+      };
+
+      config.langs.forEach((lang) => {
+        const langKey = lang.replace("-", "");
+        dataToSend[langKey] = addFormData[langKey] || ""; // 從 state 中獲取對應的值
+      });
+
       const res = await fetch(
         `http://localhost:${import.meta.env.VITE_API_PORT}/add`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(addFormData),
+          body: JSON.stringify(dataToSend), // 發送構建好的資料
         }
       ).then((r) => r.json());
 
@@ -129,8 +154,8 @@ function SheetSyncApp() {
 
       if (res.success) {
         loadData(); // 新增成功後重新載入資料
-        // 清空表單
-        setAddFormData({ cate: "", key: "", zhTW: "" });
+        // 清空表單，重置為初始狀態
+        setAddFormData(initialAddFormData);
       }
     } catch (error) {
       console.error("新增時發生錯誤:", error);
@@ -222,6 +247,101 @@ function SheetSyncApp() {
         </div>
       )}
 
+      <h2>新增多語系資料</h2>
+      <form
+        onSubmit={handleAdd}
+        className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm"
+      >
+        <div className="space-y-4">
+          <div className="flex gap-5">
+            <div className="flex-1">
+              <div className="flex">
+                <label
+                  htmlFor="addCate"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  分類
+                </label>
+                <span className="text-red-500">*</span>
+              </div>
+              <Input
+                list="cateList"
+                id="addCate"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                required
+                value={addFormData.cate}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, cate: e.target.value })
+                }
+              />
+              <datalist id="cateList">
+                {categories.map((cate: string, index: number) => (
+                  <option key={index} value={cate} />
+                ))}
+              </datalist>
+            </div>
+            <div className="flex-1">
+              <div className="flex">
+                <label
+                  htmlFor="addKey"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  key
+                </label>
+                <span className="text-red-500">*</span>
+              </div>
+              <Input
+                type="text"
+                id="addKey"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                required
+                value={addFormData.key}
+                onChange={(e) =>
+                  setAddFormData({ ...addFormData, key: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          {/* 動態生成語系輸入框 */}
+          {config.langs.map((lang) => {
+            const langKey = lang.replace("-", ""); // 去掉 '-' 的鍵名用於 state 和 body
+
+            return (
+              <div key={langKey}>
+                <label
+                  htmlFor={`add${langKey}`}
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  {lang}
+                  <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  required
+                  type="text"
+                  id={`add${langKey}`}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  value={addFormData[langKey] || ""} // 從 state 中獲取值
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setAddFormData({
+                      ...addFormData,
+                      [langKey]: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div className="w-full text-center">
+          <button
+            type="submit"
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            新增
+          </button>
+        </div>
+      </form>
+
       <h2>所有語系資料</h2>
       <div
         style={{ maxHeight: "500px", overflowY: "auto" }}
@@ -287,80 +407,6 @@ function SheetSyncApp() {
         dataLength={tableData.length}
         maxView={7}
       />
-
-      <h2>新增多語系資料</h2>
-      <form
-        onSubmit={handleAdd}
-        className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm"
-      >
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="addCate"
-              className="block text-sm font-medium text-gray-700"
-            >
-              分類
-            </label>
-            <input
-              list="cateList"
-              id="addCate"
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              required
-              value={addFormData.cate}
-              onChange={(e) =>
-                setAddFormData({ ...addFormData, cate: e.target.value })
-              }
-            />
-            <datalist id="cateList">
-              {categories.map((cate: string, index: number) => (
-                <option key={index} value={cate} />
-              ))}
-            </datalist>
-          </div>
-          <div>
-            <label
-              htmlFor="addKey"
-              className="block text-sm font-medium text-gray-700"
-            >
-              key
-            </label>
-            <input
-              type="text"
-              id="addKey"
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              required
-              value={addFormData.key}
-              onChange={(e) =>
-                setAddFormData({ ...addFormData, key: e.target.value })
-              }
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="addZhTW"
-              className="block text-sm font-medium text-gray-700"
-            >
-              zh-TW
-            </label>
-            <input
-              type="text"
-              id="addZhTW"
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-              required
-              value={addFormData["zhTW"]}
-              onChange={(e) =>
-                setAddFormData({ ...addFormData, zhTW: e.target.value })
-              }
-            />
-          </div>
-        </div>
-        <button
-          type="submit"
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          新增
-        </button>
-      </form>
 
       {/* 新增結果顯示 */}
       {addResult && (
