@@ -1,20 +1,24 @@
 import React, { useState } from "react";
 import useSheetData from "../hooks/useSheetData";
+import { TranslationRow } from "shared/types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
 
-export interface TranslationRow {
-  cate: string;
-  key: string;
-  "zh-TW": string;
-  "en-US"?: string;
-  "zh-CN"?: string;
-  "zh-HK"?: string;
-  "vi-VN"?: string;
-}
+import EnhancePagination from "./EnhancePagination";
 
 function SheetSyncApp() {
   const { tableData, categories, loadData } = useSheetData(); // 使用 useSheetData Hook
 
-  const [sheetName, setSheetName] = useState("");
+  const itemsPerPage = 50;
+
+  const [sheetName, setSheetName] = useState("Translations");
+  const [currentPage, setCurrentPage] = useState(1);
   const [downloadResult, setDownloadResult] = useState<{
     success: boolean;
     message: string;
@@ -23,7 +27,7 @@ function SheetSyncApp() {
   const [addFormData, setAddFormData] = useState({
     cate: "",
     key: "",
-    "zh-TW": "",
+    zhTW: "",
   });
   const [addResult, setAddResult] = useState<{
     success: boolean;
@@ -33,7 +37,32 @@ function SheetSyncApp() {
   // Initial data load
   React.useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, []);
+
+  const downloadReqFunc = async (): Promise<{
+    success: boolean;
+    message: string;
+  }> => {
+    const res = await fetch(
+      `http://localhost:${import.meta.env.VITE_API_PORT}/download`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheetName }),
+      }
+    );
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      console.error(`HTTP error! status: ${res.status}`, errorBody);
+
+      return {
+        success: false,
+        message: `下載失敗: ${res.status}`,
+      };
+    }
+    return res.json();
+  };
 
   // 下載並產生語系檔案
   const handleDownload = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -41,16 +70,43 @@ function SheetSyncApp() {
     setDownloadResult(null); // 清空之前的結果
 
     try {
-      const res = await fetch(`http://localhost:${import.meta.env.VITE_API_PORT}/download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sheetName }),
-      }).then((r) => r.json());
+      const result = await downloadReqFunc();
 
-      setDownloadResult(res);
+      setDownloadResult(result);
+      loadData();
     } catch (error) {
       console.error("下載時發生錯誤:", error);
       setDownloadResult({ success: false, message: "下載時發生錯誤" });
+    }
+  };
+
+  const handleReset = async (e: any) => {
+    e.preventDefault();
+    // setDownloadResult(null); // 清空之前的結果 - 暫時註解掉，後面根據後端回覆設定狀態
+
+    try {
+      const res = await fetch(
+        `http://localhost:${import.meta.env.VITE_API_PORT}/resetLocal`, // 修正路由為 /resetLocal
+        {
+          method: "POST", // 修正方法為 POST
+          headers: { "Content-Type": "application/json" },
+          // body: JSON.stringify({ sheetName }), // 重置不需要 body
+        }
+      );
+
+      const result = await res.json(); // 獲取後端回覆
+
+      setDownloadResult(result); // 根據後端回覆更新狀態
+      loadData();
+      // 移除自動下載行為
+      // const result = await downloadReqFunc();
+      // setDownloadResult(result);
+    } catch (error: any) {
+      console.error("重置時發生錯誤:", error);
+      setDownloadResult({
+        success: false,
+        message: `重置時發生錯誤: ${error.message}`,
+      });
     }
   };
 
@@ -60,18 +116,21 @@ function SheetSyncApp() {
     setAddResult(null); // 清空之前的結果
 
     try {
-      const res = await fetch(`http://localhost:${import.meta.env.VITE_API_PORT}/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(addFormData),
-      }).then((r) => r.json());
+      const res = await fetch(
+        `http://localhost:${import.meta.env.VITE_API_PORT}/add`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(addFormData),
+        }
+      ).then((r) => r.json());
 
       setAddResult(res);
 
       if (res.success) {
         loadData(); // 新增成功後重新載入資料
         // 清空表單
-        setAddFormData({ cate: "", key: "", "zh-TW": "" });
+        setAddFormData({ cate: "", key: "", zhTW: "" });
       }
     } catch (error) {
       console.error("新增時發生錯誤:", error);
@@ -86,11 +145,14 @@ function SheetSyncApp() {
     }
 
     try {
-      const res = await fetch(`http://localhost:${import.meta.env.VITE_API_PORT}/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cate, key }),
-      }).then((r) => r.json());
+      const res = await fetch(
+        `http://localhost:${import.meta.env.VITE_API_PORT}/delete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cate, key }),
+        }
+      ).then((r) => r.json());
 
       alert(res.message); // 使用 alert 顯示結果，如同原 HTML
 
@@ -108,7 +170,10 @@ function SheetSyncApp() {
       <h1>i18n Sheet Sync 操作介面</h1>
 
       {/* 下載表單 */}
-      <form onSubmit={handleDownload} className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm">
+      <form
+        onSubmit={handleDownload}
+        className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm"
+      >
         <h2 className="text-lg font-semibold mb-4">下載語系檔案</h2>
         <div className="space-y-4">
           <div>
@@ -136,6 +201,14 @@ function SheetSyncApp() {
         </button>
       </form>
 
+      <button
+        type="button"
+        onClick={handleReset}
+        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+      >
+        重置 Local 資料
+      </button>
+
       {/* 下載結果顯示 */}
       {downloadResult && (
         <div
@@ -150,77 +223,76 @@ function SheetSyncApp() {
       )}
 
       <h2>所有語系資料</h2>
-      <div style={{ maxHeight: "500px", overflowY: "auto" }} className="border border-gray-200 rounded-md shadow-sm">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead>
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                分類
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                key
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                zh-TW
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                en-US
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                zh-CN
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                zh-HK
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                vi-VN
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {tableData.map((row: TranslationRow, index: number) => (
-              <tr key={index}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {row.cate}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row.key}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row["zh-TW"] || ""}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row["en-US"] || ""}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row["zh-CN"] || ""}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row["zh-HK"] || ""}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {row["vi-VN"] || ""}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button
-                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    onClick={() => handleDelete(row.cate, row.key)}
-                  >
-                    刪除
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div
+        style={{ maxHeight: "500px", overflowY: "auto" }}
+        className="border border-gray-200 rounded-md shadow-sm max-w-full mx-auto"
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[100px]">分類</TableHead>
+              <TableHead className="w-[100px]">key</TableHead>
+              <TableHead className="w-[100px]">zh-TW</TableHead>
+              <TableHead className="w-[100px]">en-US</TableHead>
+              <TableHead className="w-[100px]">zh-CN</TableHead>
+              <TableHead className="w-[100px]">zh-HK</TableHead>
+              <TableHead className="w-[100px]">vi-VN</TableHead>
+              <TableHead className="text-right w-[50px]">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tableData
+              .slice(
+                (currentPage - 1) * itemsPerPage,
+                currentPage * itemsPerPage
+              )
+              .map((row: TranslationRow, index: number) => (
+                <TableRow key={index}>
+                  <TableCell className="font-medium w-[15%]">
+                    {row.cate}
+                  </TableCell>
+                  <TableCell className="w-[100px]">{row.key}</TableCell>
+                  <TableCell className="w-[100px]">
+                    {row["zh-TW"] || ""}
+                  </TableCell>
+                  <TableCell className="w-[100px]">
+                    {row["en-US"] || ""}
+                  </TableCell>
+                  <TableCell className="w-[100px]">
+                    {row["zh-CN"] || ""}
+                  </TableCell>
+                  <TableCell className="w-[100px]">
+                    {row["zh-HK"] || ""}
+                  </TableCell>
+                  <TableCell className="w-[100px]">
+                    {row["vi-VN"] || ""}
+                  </TableCell>
+                  <TableCell className="text-right w-[50px]">
+                    <button
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      onClick={() => handleDelete(row.cate, row.key)}
+                    >
+                      刪除
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+          </TableBody>
+        </Table>
       </div>
+      <EnhancePagination
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        itemsPerPage={50}
+        dataLength={tableData.length}
+        maxView={7}
+      />
 
       <h2>新增多語系資料</h2>
-      <form onSubmit={handleAdd} className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">新增多語系資料</h2>
+      <form
+        onSubmit={handleAdd}
+        className="mb-4 space-y-4 p-4 border border-gray-200 rounded-md shadow-sm"
+      >
         <div className="space-y-4">
           <div>
             <label
@@ -275,9 +347,9 @@ function SheetSyncApp() {
               id="addZhTW"
               className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               required
-              value={addFormData["zh-TW"]}
+              value={addFormData["zhTW"]}
               onChange={(e) =>
-                setAddFormData({ ...addFormData, "zh-TW": e.target.value })
+                setAddFormData({ ...addFormData, zhTW: e.target.value })
               }
             />
           </div>

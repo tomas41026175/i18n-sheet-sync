@@ -1,23 +1,30 @@
 import express from "express";
 import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 import { downloadSheetToJson, syncJsonToSheet } from "./sync.ts";
 import config from "../shared/i18n-config.ts";
 import fs from "fs/promises";
 import type { Request, Response } from "express";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
+import cors from "cors";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const port = 3005;
 
 app.use(express.json());
+app.use(cors());
 
 app.post("/download", async (req: Request, res: Response) => {
   try {
     const { sheetName } = req.body;
     await downloadSheetToJson(
       { ...config, sheetName: sheetName || config.sheetName },
-      path.join(__dirname, "../entire.json")
+      path.join(__dirname, "./entire.json")
     );
     res.json({ success: true, message: "下載並產生語系檔案完成" });
   } catch (e: any) {
@@ -25,10 +32,20 @@ app.post("/download", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/data", async (res: Response) => {
+app.get("/data", async (_: Request, res: Response) => {
   try {
-    const raw = await fs.readFile(path.join(__dirname, "../entire.json"), "utf-8");
-    res.json({ success: true, data: JSON.parse(raw) });
+    const raw = await fs.readFile(
+      path.join(__dirname, "./entire.json"),
+      "utf-8"
+    );
+    const data = JSON.parse(raw);
+
+    if (data.length === 0) {
+      res.status(550).json({ success: false, message: "資料為空" });
+      return;
+    }
+
+    res.json({ success: true, data });
   } catch (e: any) {
     res.json({ success: false, message: e.message });
   }
@@ -42,7 +59,10 @@ app.post("/add", async (req: Request, res: Response) => {
       return;
     }
     // 讀取 entire.json 檢查是否重複
-    const raw = await fs.readFile(path.join(__dirname, "../entire.json"), "utf-8");
+    const raw = await fs.readFile(
+      path.join(__dirname, "./entire.json"),
+      "utf-8"
+    );
     const arr = JSON.parse(raw);
     if (arr.some((row: any) => row.cate === cate && row.key === key)) {
       res.json({ success: false, message: "分類+key 已存在" });
@@ -57,20 +77,42 @@ app.post("/add", async (req: Request, res: Response) => {
       "zh-TW": zhTW,
       "en-US": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "en")`,
       "zh-CN": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "zh-CN")`,
-      "zh-HK": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "zh-TW")`,
+      "zh-HK": `=C${rowIndex}`,
       "vi-VN": `=GOOGLETRANSLATE(C${rowIndex}, "zh-TW", "vi")`,
     });
-    await fs.writeFile(path.join(__dirname, "../entire.json"), JSON.stringify(arr, null, 2), "utf-8");
+    await fs.writeFile(
+      path.join(__dirname, "./entire.json"),
+      JSON.stringify(arr, null, 2),
+      "utf-8"
+    );
     // 同步到 Google Sheet
-    await syncJsonToSheet(path.join(__dirname, "../entire.json"), config);
+    await syncJsonToSheet(path.join(__dirname, "./entire.json"), config);
     // 下載最新資料
-    await downloadSheetToJson(config, path.join(__dirname, "../entire.json"));
+    await downloadSheetToJson(config, path.join(__dirname, "./entire.json"));
     res.json({
       success: true,
       message: "已同步寫入 Google Sheet 並下載最新資料",
     });
   } catch (e: any) {
     res.json({ success: false, message: e.message });
+  }
+});
+
+app.post("/resetLocal", async (req: Request, res: Response) => {
+  try {
+    // 清空 entire.json 檔案
+    await fs.writeFile(
+      path.join(__dirname, "./entire.json"),
+      JSON.stringify([], null, 2),
+      "utf-8"
+    );
+
+    res.json({
+      success: true,
+      message: "已重置所有資料",
+    });
+  } catch (e: any) {
+    console.error("資料失敗:", e);
   }
 });
 
@@ -87,7 +129,7 @@ app.post("/delete", async (req: Request, res: Response) => {
     // 初始化 Google Sheets API 客戶端
     const authClient = new google.auth.GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/spreadsheets"], // 需要寫入權限來刪除
-      keyFile: config.auth,
+      keyFile: path.join(__dirname, config.auth),
     });
     const client = (await authClient.getClient()) as JWT;
     const sheets = google.sheets({ version: "v4", auth: client });
@@ -191,7 +233,7 @@ app.post("/delete", async (req: Request, res: Response) => {
     console.log(`✅ 已從 Google Sheet 刪除分類: ${cate}, key: ${key}`);
 
     // 5. 下載最新的 Google Sheet 資料來更新本地檔案
-    await downloadSheetToJson(config, path.join(__dirname, "../entire.json"));
+    await downloadSheetToJson(config, path.join(__dirname, "./entire.json"));
 
     res.json({
       success: true,
