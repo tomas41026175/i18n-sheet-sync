@@ -2,13 +2,13 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { downloadSheetToJson, syncJsonToSheet } from "./sync.ts";
-import config from "../shared/i18n-config.ts";
+import config from "../shared/i18n-config";
 import fs from "fs/promises";
 import type { Request, Response } from "express";
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 import cors from "cors";
+import { downloadSheetToJson, syncJsonToSheet } from "./sync";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
