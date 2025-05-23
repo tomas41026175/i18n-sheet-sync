@@ -4,6 +4,7 @@
 
 ## 目錄結構
 
+```
 ├── bin/ # CLI 執行入口
 ├── locales/ # 自動產生的各語系 JSON 檔案存放目錄
 ├── public/ # Web 介面靜態檔案 (index.html)
@@ -17,6 +18,7 @@
 ├── pnpm-lock.yaml # pnpm lock 檔案
 ├── server.ts # Web 伺服器入口
 └── tsconfig.json # TypeScript 編譯設定
+```
 
 ## 功能特色
 
